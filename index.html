@@ -169,7 +169,7 @@ function mock(r){
   const qtext = id => {
     if(id === 'AI-J' && job) return `${josa(job.n, '은')} '${job.a.daily}' 같은 일을 해요. 이 중 가장 해 보고 싶은 일과 그 이유를 말해주세요.`;
     if(id === 'AI-M' && job) return `${josa(job.n, '이')} 되려면 '${job.a.path}' 과정이 필요해요. 입학 후 이를 위해 어떤 공부와 활동을 하고 싶은가요?`;
-    return T.q[id] ? fill(T.q[id][0], r.t) : '';
+    return T.q[id] ? fill(T.q[id][0], r.t) : (String(id || '').length > 8 ? id : '');   // 예전 QR은 질문 문장을 그대로 담았음
   };
   const items = r.q.map((it, i) => `<section class="card mq"><h3><span>질문 ${i + 1} <small>${esc(it.g)}</small></span>${scale(it.l)}</h3>
       <p class="qtext">${esc(qtext(it.x))}</p>
