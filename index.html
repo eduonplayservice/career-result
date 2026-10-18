@@ -63,7 +63,7 @@ details[open] summary::before{content:'−'}
 details > *:not(summary){margin-top:10px}
 .todo{background:var(--signal-tint);border-radius:12px;padding:10px 14px;font-weight:700}
 .todo b{display:block;font-size:13px;color:#7A5A00}
-ol.qa{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:6px;font-size:15px}
+ol.qa{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:15px}
 ol.qa span{color:var(--muted)}
 /* 인터뷰 */
 .hero{display:flex;align-items:flex-end;gap:12px}
@@ -92,6 +92,9 @@ mark{background:var(--signal-tint);color:#6B4E00;border-radius:4px;padding:0 3px
 .foot{font-size:13px;color:var(--muted);text-align:center;display:flex;flex-direction:column;gap:6px;padding-top:4px}
 .save{align-self:center;font:inherit;font-weight:800;font-size:16px;background:var(--signal);color:var(--sign);border:2px solid var(--sign);border-radius:12px;padding:10px 18px;box-shadow:0 4px 0 var(--sign);cursor:pointer}
 .save:active{transform:translateY(4px);box-shadow:none}
+.save:disabled{opacity:.7}
+body.pdfmode .wrap{width:760px;max-width:none;margin:0}
+.pdf-cover{position:fixed;inset:0;z-index:9;background:var(--platform);display:grid;place-items:center;font-weight:800;font-size:18px}
 .empty{text-align:center;padding:40px 10px;display:flex;flex-direction:column;gap:10px;align-items:center}
 .empty h1{font-size:24px}
 .strip{height:18px;border-radius:5px;background:radial-gradient(circle,#E2A600 0 3px,transparent 4px) 0 0/14px 14px,var(--signal);border-top:4px solid var(--sign)}
@@ -125,7 +128,7 @@ async function unpack(s){
   return JSON.parse(text);
 }
 const sign = (n, kicker, title, sub) => `<header class="sign"><div class="row"><span class="dot">${n}</span><small>${esc(kicker)}</small></div><h1>${esc(title)}</h1>${sub ? `<p>${esc(sub)}</p>` : ''}</header>`;
-const foot = () => `<button class="save" type="button" id="save">이 결과지 저장하기</button>
+const foot = () => `<button class="save" type="button" id="save">PDF로 저장하기</button>
   <div class="foot"><p>AI 진로 스테이션 · 결과는 이 화면에만 있고 어디에도 저장되지 않아요.</p><p>화면을 캡처하거나 이 페이지를 즐겨찾기에 넣어 두세요.</p></div><div class="strip" aria-hidden="true"></div>`;
 const jobDetail = j => `<dl><dt>하는 일</dt><dd>${esc(j.a.daily)}</dd><dt>되는 길</dt><dd>${esc(j.a.path)}</dd><dt>필요한 과목</dt><dd>${esc(j.a.subjects)}</dd>
   <dt>좋은 점</dt><dd>${esc(j.pro)}</dd><dt>힘든 점</dt><dd>${esc(j.con)}</dd><dt>미래 전망</dt><dd>${esc(j.a.outlook)}</dd></dl>`;
@@ -139,8 +142,8 @@ function counsel(r){
       <div class="who"><img src="${img(j.id, 'face')}" alt="" loading="lazy"><div><h3>${esc(j.n)}${j.f ? '<span class="fut">미래 유망</span>' : ''}</h3><p class="fit">나와 맞는 정도 ${pct}%</p></div></div>
       <p>${esc(j.d)}</p><div class="todo"><b>오늘 해볼 것</b>${esc(j.td)}</div>
       <details><summary>이 직업 더 알아보기</summary>${jobDetail(j)}</details></div></article>`; }).join('');
-  const qa = r.a.map(([qi, t]) => { const q = bank[qi]; if(!q) return ''; const o = q[1][t] || ['', ''];
-    return `<li>${esc(q[0])}<br><span>${esc(o[0])} ${esc(o[1])} · ${esc(tn(t))}</span></li>`; }).join('');
+  const qa = r.a.map(([qi, t], i) => { const q = bank[qi]; if(!q) return ''; const o = q[1][t] || ['', ''];
+    return `<li><b>${i + 1}.</b> ${esc(q[0])}<br><span>${esc(o[0])} ${esc(o[1])} · ${esc(tn(t))}</span></li>`; }).join('');
   return sign(1, 'AI 직업상담 결과', `${r.n}의 진로 탐색 결과`, `${LVL[r.l] || ''} · ${r.d}`) +
     `<section class="card"><h2>나의 흥미 유형</h2><span class="badge">${te(m)} ${esc(tn(m))}${sb && sb !== m ? ` + ${te(sb)} ${esc(tn(sb))}` : ''}</span>
       <p class="trait">${esc(tn(m))}: ${TRAIT[m]}${sb && sb !== m ? `<br>${esc(tn(sb))}: ${TRAIT[sb]}` : ''}</p>
@@ -194,10 +197,57 @@ async function main(){
   app.innerHTML = html + (/^(c|i|m)$/.test(r.k) ? foot() : '');
   document.title = ({c:'나의 진로 탐색 결과', i:'직업인 인터뷰 노트', m:'모의 면접 피드백'}[r.k] || '결과지') + ' · AI 진로 스테이션';
   const sv = document.getElementById('save');
-  if(sv) sv.onclick = async () => {
-    if(navigator.share){ try{ await navigator.share({title:document.title, url:location.href}); return; }catch(e){ if(e && e.name === 'AbortError') return; } }
-    window.print();
-  };
+  if(sv) sv.onclick = () => savePdf(sv, r);
+}
+/* PDF로 저장: 휴대폰 안에서 결과지를 그림으로 떠서 A4 PDF로 만든다 (서버로 아무것도 보내지 않음) */
+const loadScript = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+async function savePdf(btn, r){
+  if(btn.disabled) return;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'PDF 만드는 중…';
+  const opened = [...document.querySelectorAll('details:not([open])')]; opened.forEach(d => d.open = true);
+  // 휴대폰 폭과 상관없이 같은 모양으로 뜨도록 잠깐 760px 폭으로 놓고 그 위를 '만드는 중' 화면으로 가림
+  const cover = document.createElement('div'); cover.className = 'pdf-cover'; cover.textContent = 'PDF 만드는 중…'; document.body.appendChild(cover);
+  document.body.classList.add('pdfmode');
+  try{
+    if(!window.html2canvas) await loadScript('vendor/html2canvas.min.js');
+    if(!window.jspdf) await loadScript('vendor/jspdf.umd.min.js');
+    await document.fonts.ready;
+    const el = document.getElementById('app'), scale = 2;
+    const W0 = el.offsetWidth;
+    const canvas = await html2canvas(el, {scale, backgroundColor:'#EDF0F3', width:W0, windowWidth:W0 + 40, useCORS:true, logging:false,
+      ignoreElements: n => n.id === 'save' || n.classList.contains('foot') || n.classList.contains('strip') || n.classList.contains('pdf-cover')});
+    // 쪽 나누기: 카드·승차권·질문 같은 덩어리가 끝나는 곳에서만 자르고, 한 쪽보다 긴 덩어리만 중간에서 자름
+    const top0 = el.getBoundingClientRect().top;
+    const at = sel => [...el.querySelectorAll(sel)].map(c => Math.round((c.getBoundingClientRect().bottom - top0 + 6) * scale));
+    const heads = [...el.querySelectorAll('section:not(.card) > h2')].map(c => Math.round((c.getBoundingClientRect().top - top0 - 4) * scale));   // 제목은 다음 덩어리와 같은 쪽으로
+    const major = at(':scope > *:not(.strip):not(.foot):not(#save), .card, .ticket').concat(heads), minor = at('.ticket .body > *, .qitem, ol.qa li, dl, .two, .polish, .mq > *');
+    const pdf = new jspdf.jsPDF({unit:'mm', format:'a4'}), W = 190, pageH = Math.floor(canvas.width * 277 / W);
+    let start = 0, first = true;
+    while(start < canvas.height - 60 * scale){   // 끝에 남은 여백만으로 빈 쪽이 생기지 않게
+      // 카드·승차권이 끝나는 곳에서 자르되 쪽이 너무 비면(40% 미만) 카드 안의 작은 덩어리 끝에서 자름
+      const big = major.filter(y => y > start + pageH * .4 && y <= start + pageH), small = minor.filter(y => y > start + 40 && y <= start + pageH);
+      const end = canvas.height - start <= pageH ? canvas.height : big.length ? Math.max(...big) : small.length ? Math.max(...small) : start + pageH;   // 남은 게 한 쪽에 다 들어가면 그대로
+      const part = document.createElement('canvas'); part.width = canvas.width; part.height = end - start;
+      part.getContext('2d').drawImage(canvas, 0, start, canvas.width, end - start, 0, 0, canvas.width, end - start);
+      if(!first) pdf.addPage();
+      pdf.addImage(part.toDataURL('image/jpeg', .9), 'JPEG', 10, 10, W, (end - start) * W / canvas.width);
+      first = false; start = end;
+    }
+    const name = `AI진로스테이션_${({c:'진로탐색결과', i:'인터뷰노트', m:'면접피드백'})[r.k] || '결과지'}_${String(r.d || '').replace(/\./g, '')}.pdf`;
+    const blob = pdf.output('blob'), file = new File([blob], name, {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], title:document.title}); }catch(e){ if(!e || e.name !== 'AbortError') throw e; }
+    } else {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    }
+    btn.textContent = label;
+  }catch(e){
+    btn.textContent = 'PDF를 만들지 못했어요 · 화면을 캡처해 주세요';
+  }finally{
+    document.body.classList.remove('pdfmode'); cover.remove();
+    opened.forEach(d => d.open = false); btn.disabled = false;
+  }
 }
 main();
 })();
